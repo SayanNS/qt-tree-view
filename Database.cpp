@@ -59,7 +59,7 @@ void Database::update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t
 	data.name = t_data.name;
 	data.deleted = t_data.deleted;
 
-	onUpdated(data.row, t_node);
+	m_onUpdated(data.row, t_node);
 }
 
 Database::TreeNodeDescriptor Database::append(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_parent)
@@ -72,15 +72,15 @@ Database::TreeNodeDescriptor Database::append(const DatabaseNode &t_data, Databa
 	data.row = parent_data.count;
 	parent_data.count++;
 
-	onAppended(parent_data.row, data.row, t_parent);
+	m_onAppended(parent_data.row, data.row, t_parent);
 
 	return node;
 }
 
 void Database::setCallbacks(Database::appended_handler &&t_onAppended, Database::updated_handler &&t_onUpdated)
 {
-	onAppended = std::move(t_onAppended);
-	onUpdated = std::move(t_onUpdated);
+	m_onAppended = std::move(t_onAppended);
+	m_onUpdated = std::move(t_onUpdated);
 }
 
 void Database::remove(Database::TreeNodeDescriptor t_node)
@@ -91,7 +91,7 @@ void Database::remove(Database::TreeNodeDescriptor t_node)
 		return;
 
 	data.deleted = true;
-	onUpdated(data.row, t_node);
+	m_onUpdated(data.row, t_node);
 
 	std::queue<Database::TreeNodeDescriptor> bfs_traversal;
 	bfs_traversal.push(t_node);
@@ -104,7 +104,7 @@ void Database::remove(Database::TreeNodeDescriptor t_node)
 				continue;
 
 			child_data.deleted = true;
-			onUpdated(child_data.row, child);
+			m_onUpdated(child_data.row, child);
 
 			bfs_traversal.push(child);
 		}

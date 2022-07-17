@@ -42,8 +42,8 @@ public:
 private:
 	void populate(typename Database::TreeNodeDescriptor t_parent, std::string &t_str, int t_current);
 
-	appended_handler onAppended;
-	updated_handler onUpdated;
+	appended_handler m_onAppended;
+	updated_handler m_onUpdated;
 };
 
 }

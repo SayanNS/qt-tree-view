@@ -14,10 +14,6 @@ public:
 	using graph_type = boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, T>;
 	using TreeNodeDescriptor = typename boost::graph_traits<graph_type>::vertex_descriptor;
 
-	TreeStructure() : m_graph(), m_root()
-	{
-	}
-
 	TreeNodeDescriptor getRoot() const
 	{
 		return m_root;
@@ -65,20 +61,6 @@ public:
 	{
 		m_graph.clear();
 	}
-
-//	void removeNode(TreeNodeDescriptor node)
-//	{
-//		boost::clear_in_edges(node, m_graph);
-//		auto edges_it_pair = out_edges(node, m_graph);
-//		for (auto edges_it = edges_it_pair.first; edges_it != edges_it_pair.second;) {
-//			auto node_p = edges_it++;
-//			removeNode(boost::target(*node_p, m_graph));
-//		}
-//		boost::clear_out_edges(node, m_graph);
-//		boost::remove_vertex(node, m_graph);
-//
-//		if (node == m_root) m_root = nullptr;
-//	}
 
 protected:
 	TreeNodeDescriptor m_root;
