@@ -4,10 +4,13 @@
 
 #include "CacheModel.h"
 #include "Cache.h"
-#include "DatabaseModel.h"
 #include <queue>
 
-CacheModel::CacheModel(Cache &cache, QObject *parent) : QAbstractItemModel(parent), cache(cache)
+namespace Mikran {
+
+CacheModel::CacheModel(Cache *t_cache, QObject *parent)
+	: QAbstractItemModel(parent)
+	, m_cache(t_cache)
 {
 }
 
@@ -17,7 +20,7 @@ QVariant CacheModel::data(const QModelIndex &index, int role) const
 		return QVariant();
 
 	if (role == Qt::DisplayRole || role == Qt::EditRole) {
-		std::string &data = cache.getNodeData(index.internalPointer()).name;
+		std::string &data = m_cache->getData(index.internalPointer()).name;
 		return data.c_str();
 	}
 
@@ -29,13 +32,9 @@ Qt::ItemFlags CacheModel::flags(const QModelIndex &index) const
 	if (!index.isValid())
 		return Qt::NoItemFlags;
 
-	Cache::tree_node_descriptor current = index.internalPointer();
+	if (m_cache->getData(index.internalPointer()).deleted)
+		return QAbstractItemModel::flags(index) & ~Qt::ItemIsEnabled;
 
-	while (current != cache.getRootNode()) {
-		if (cache.getNodeData(current).deleted)
-			return QAbstractItemModel::flags(index) & ~Qt::ItemIsEnabled;
-		current = cache.getParentNode(current);
-	}
 	return Qt::ItemIsEditable | QAbstractItemModel::flags(index);
 }
 
@@ -44,17 +43,18 @@ bool CacheModel::setData(const QModelIndex &index, const QVariant &value, int ro
 	if (role != Qt::EditRole)
 		return false;
 
-	cache_node_data &data = cache.getNodeData(index.internalPointer());
+	CacheNode &data = m_cache->getData(index.internalPointer());
 	std::string new_value = std::move(value.toString().toStdString());
 
 	if (new_value.empty())
 		return false;
 
 	data.name = std::move(value.toString().toStdString());
-	emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole});
 
-	if (data.database_node != nullptr)
-		data.modified = true;
+	if (data.state != State::CREATED)
+		data.state = State::CHANGED;
+
+	emit dataChanged(index, index, {Qt::DisplayRole, Qt::EditRole});
 
 	return true;
 }
@@ -72,22 +72,22 @@ QModelIndex CacheModel::index(int row, int column, const QModelIndex &parent) co
 	if (!hasIndex(row, column, parent))
 		return QModelIndex();
 
-	Cache::tree_node_descriptor parent_node;
+	Cache::TreeNodeDescriptor parent_node;
 
 	if (!parent.isValid()) {
-		parent_node = cache.getRootNode();
+		parent_node = m_cache->getRoot();
 	} else {
 		parent_node = parent.internalPointer();
 	}
-	auto iterator = cache.getNodeChildrenIterator(parent_node);
-	auto node = iterator.first;
+	int counter = 0;
 
-	for (int i = 0; i < row && node != iterator.second; i++)
-		node++;
-	if (node == iterator.second)
-		return QModelIndex();
-
-	return createIndex(row, column, *node);
+	for (auto node : boost::make_iterator_range(m_cache->getChildrenIterator(parent_node))) {
+		if (counter == row) {
+			return createIndex(row, column, node);
+		}
+		counter++;
+	}
+	return QModelIndex();
 }
 
 QModelIndex CacheModel::parent(const QModelIndex &index) const
@@ -95,25 +95,24 @@ QModelIndex CacheModel::parent(const QModelIndex &index) const
 	if (!index.isValid())
 		return QModelIndex();
 
-	auto parent = cache.getParentNode(index.internalPointer());
+	auto parent = m_cache->getParent(index.internalPointer());
 
-	if (cache.getRootNode() == parent)
+	if (m_cache->getRoot() == parent)
 		return QModelIndex();
 
-	return createIndex(cache.getNodeData(parent).row, 0, parent);
+	return createIndex(m_cache->getData(parent).row, 0, parent);
 }
 
 int CacheModel::rowCount(const QModelIndex &parent) const
 {
-	Cache::tree_node_descriptor node;
+	Cache::TreeNodeDescriptor node;
 
 	if (parent.isValid()) {
 		node = parent.internalPointer();
 	} else {
-		node = cache.getRootNode();
+		node = m_cache->getRoot();
 	}
-
-	return cache.getNodeData(node).count;
+	return m_cache->getData(node).count;
 }
 
 int CacheModel::columnCount(const QModelIndex &parent) const
@@ -122,44 +121,46 @@ int CacheModel::columnCount(const QModelIndex &parent) const
 	return 1;
 }
 
-void CacheModel::loadNode(const QModelIndex &index)
+void CacheModel::loadIndex(const QModelIndex &index)
 {
-	Database::tree_node_descriptor database_node = reinterpret_cast<Database::tree_node_descriptor>(index.internalPointer());
-	Cache::tree_node_descriptor parent_node;
-	Cache::tree_node_descriptor new_node;
+	Cache::TreeNodeDescriptor parent_node;
+	Cache::TreeNodeDescriptor new_node;
 
-	parent_node = cache.findParent(database_node);
+	parent_node = m_cache->findParent(index.internalPointer());
 
 	if (parent_node == nullptr)
 		return;
 
-	if (parent_node == cache.getRootNode()) {
-		int first = cache.getNodeData(parent_node).count;
+	if (parent_node == m_cache->getRoot()) {
+		int first = m_cache->getData(parent_node).count;
 
 		beginInsertRows(QModelIndex(), first, first);
-		new_node = cache.fetchFromDatabase(parent_node,
-				reinterpret_cast<Database::tree_node_descriptor>(index.internalPointer()));
+		new_node = m_cache->fetchFromDatabase(parent_node, index.internalPointer());
 		endInsertRows();
 	} else {
-		cache_node_data &parent_node_data = cache.getNodeData(parent_node);
+		CacheNode &parent_node_data = m_cache->getData(parent_node);
 
-		beginInsertRows(createIndex(parent_node_data.row, 0, parent_node), parent_node_data.count, parent_node_data.count);
-		new_node = cache.fetchFromDatabase(parent_node,
-				reinterpret_cast<Database::tree_node_descriptor>(index.internalPointer()));
+		beginInsertRows(createIndex(parent_node_data.row, 0, parent_node), parent_node_data.count,
+				parent_node_data.count);
+		new_node = m_cache->fetchFromDatabase(parent_node, index.internalPointer());
 		endInsertRows();
 	}
 
-	auto root_child_iterator = cache.getNodeChildrenIterator(cache.getRootNode());
+	auto root_child_iterator = m_cache->getChildrenIterator(m_cache->getRoot());
 	int sourceFirst = 0, destinationChild = 0;
 
 	for (auto node = root_child_iterator.first; node != root_child_iterator.second;) {
-		if (cache.isParent(new_node, *node)) {
+		if (m_cache->isParent(new_node, *node)) {
 			beginMoveRows(QModelIndex(), sourceFirst, sourceFirst,
-					createIndex(cache.getNodeData(new_node).row, 0, new_node), destinationChild);
-			auto move_node = *node++;
-			cache.moveNode(new_node, move_node);
+					createIndex(m_cache->getData(new_node).row, 0, new_node), destinationChild);
+			auto move_node = *node;
+			node++;
+			m_cache->move(new_node, move_node);
+			m_cache->getData(m_cache->getRoot()).count--;
+			m_cache->getData(move_node).row = m_cache->getData(new_node).count++;
+
 			for (auto root_child = node; root_child != root_child_iterator.second; root_child++) {
-				cache.getNodeData(*root_child).row--;
+				m_cache->getData(*root_child).row--;
 			}
 			endMoveRows();
 			destinationChild++;
@@ -168,63 +169,88 @@ void CacheModel::loadNode(const QModelIndex &index)
 			sourceFirst++;
 		}
 	}
+
+	if (!m_cache->getData(parent_node).deleted)
+		return;
+
+	std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
+	m_cache->getData(new_node).deleted = true;
+	bfs_traversal.push(new_node);
+
+	while (!bfs_traversal.empty()) {
+		for (auto child : boost::make_iterator_range(m_cache->getChildrenIterator(bfs_traversal.front()))) {
+			CacheNode &data = m_cache->getData(child);
+
+			if (data.deleted)
+				continue;
+
+			data.deleted = true;
+
+			bfs_traversal.push(child);
+		}
+		bfs_traversal.pop();
+	}
 }
 
-void CacheModel::deleteNode(const QModelIndex &index)
+void CacheModel::deleteIndex(const QModelIndex &index)
 {
-	Cache::tree_node_descriptor node = index.internalPointer();
-	cache.getNodeData(node).deleted = true;
+	Cache::TreeNodeDescriptor node = index.internalPointer();
+	CacheNode &node_data = m_cache->getData(node);
+
+	node_data.deleted = true;
+	if (node_data.state != State::CREATED)
+		node_data.state = State::DELETED;
+
 	emit dataChanged(index, index, {Qt::DisplayRole});
 
-//	beginRemoveRows(index.parent(), index.row(), index.row());
-//	cache.getNodeData(cache.getParentNode(node)).count--;
-//	cache.removeNode(node);
-//	endRemoveRows();
+	std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
+	bfs_traversal.push(node);
+
+	while (!bfs_traversal.empty()) {
+		for (auto child : boost::make_iterator_range(m_cache->getChildrenIterator(bfs_traversal.front()))) {
+			CacheNode &data = m_cache->getData(child);
+
+			if (data.deleted)
+				continue;
+
+			data.deleted = true;
+			QModelIndex deleted_index = createIndex(data.row, 0, child);
+			emit dataChanged(deleted_index, deleted_index, {Qt::DisplayRole});
+
+			bfs_traversal.push(child);
+		}
+		bfs_traversal.pop();
+	}
 }
 
-void CacheModel::addNode(const QModelIndex &index, QString name)
+void CacheModel::addIndex(const QModelIndex &index, QString name)
 {
-	Cache::tree_node_descriptor parent = index.internalPointer();
-	int first = cache.getNodeData(parent).count;
+	Cache::TreeNodeDescriptor parent = index.internalPointer();
+	CacheNode &parent_data = m_cache->getData(parent);
 
-	beginInsertRows(index, first, first);
-	cache.getNodeData(parent).count++;
-	Cache::tree_node_descriptor node = cache.createChildNode(parent);
-	cache_node_data &data = cache.getNodeData(node);
+	beginInsertRows(index, parent_data.count, parent_data.count);
+	Cache::TreeNodeDescriptor node = m_cache->createChild(parent);
+	CacheNode &data = m_cache->getData(node);
+
 	data.name = std::move(name.toStdString());
-	data.row = first;
+	data.row = parent_data.count;
+	data.state = State::CREATED;
+
+	parent_data.count++;
+
 	endInsertRows();
 }
 
-void CacheModel::applyChanges(QAbstractItemModel *model)
+void CacheModel::applyChanges()
 {
-	DatabaseModel *databaseModel = reinterpret_cast<DatabaseModel *>(model);
-	std::queue<Cache::tree_node_descriptor> bfs_queue;
-	bfs_queue.push(cache.getRootNode());
-
-	while (!bfs_queue.empty()) {
-		Cache::tree_node_descriptor current = bfs_queue.front();
-
-		for (auto child : boost::make_iterator_range(cache.getNodeChildrenIterator(current))) {
-			cache_node_data &data = cache.getNodeData(child);
-			if (data.database_node == nullptr) {
-				Cache::tree_node_descriptor parent = cache.getParentNode(child);
-				data.database_node = databaseModel->createNode(cache.getNodeData(parent).database_node, data);
-			} else if (data.deleted) {
-				databaseModel->deleteNode(data.database_node);
-			} else if (data.modified) {
-				databaseModel->changeNodeData(data);
-				data.modified = false;
-			}
-			bfs_queue.push(child);
-		}
-		bfs_queue.pop();
-	}
+	m_cache->flush();
 }
 
 void CacheModel::resetModel()
 {
 	beginResetModel();
-	cache.reset();
+	m_cache->reset();
 	endResetModel();
+}
+
 }

@@ -4,13 +4,26 @@
 
 #include "DatabaseModel.h"
 #include "Database.h"
-#include "Cache.h"
-#include <queue>
 
+namespace Mikran {
 
-DatabaseModel::DatabaseModel(Database &database, QObject *parent)
-	: QAbstractItemModel(parent), database(database)
+DatabaseModel::DatabaseModel(Database *t_database, QObject *parent)
+	: QAbstractItemModel(parent)
+	, m_database(t_database)
 {
+	m_database->setCallbacks
+	(
+			[this] (int parent_row, int child_row, Database::TreeNodeDescriptor parent) {
+				// I know we should update our internal storage inside begin and end scope but in our case
+				// it is pretty fine cause we add new items at the end of node child list
+				beginInsertRows(createIndex(parent_row, 0, parent), child_row, child_row);
+				endInsertRows();
+			},
+			[this] (int row, Database::TreeNodeDescriptor node) {
+				QModelIndex index = createIndex(row, 0, node);
+				emit dataChanged(index, index, {Qt::DisplayRole});
+			}
+	);
 }
 
 QVariant DatabaseModel::data(const QModelIndex &index, int role) const
@@ -21,8 +34,7 @@ QVariant DatabaseModel::data(const QModelIndex &index, int role) const
 	if (role != Qt::DisplayRole)
 		return QVariant();
 
-	std::string data = database.getNodeData(
-			index.internalPointer()).name;
+	std::string data = m_database->getData(index.internalPointer()).name;
 
 	return data.c_str();
 }
@@ -32,14 +44,7 @@ Qt::ItemFlags DatabaseModel::flags(const QModelIndex &index) const
 	if (!index.isValid())
 		return Qt::NoItemFlags;
 
-	Database::tree_node_descriptor current = index.internalPointer();
-
-	while (current != database.getRootNode()) {
-		if (database.getNodeData(current).deleted)
-			return QAbstractItemModel::flags(index) & ~Qt::ItemIsEnabled;
-		current = database.getParentNode(current);
-	}
-	if (database.getNodeData(current).deleted)
+	if (m_database->getData(index.internalPointer()).deleted)
 		return QAbstractItemModel::flags(index) & ~Qt::ItemIsEnabled;
 
 	return QAbstractItemModel::flags(index);
@@ -59,17 +64,17 @@ QModelIndex DatabaseModel::index(int row, int column, const QModelIndex &parent)
 		return QModelIndex();
 
 	if (!parent.isValid())
-		return createIndex(row, column, database.getRootNode());
+		return createIndex(row, column, m_database->getRoot());
 
-	auto iterator = database.getNodeChildrenIterator(parent.internalPointer());
-	auto node = iterator.first;
+	int counter = 0;
 
-	for (int i = 0; i < row && node != iterator.second; i++)
-		node++;
-	if (node == iterator.second)
-		return QModelIndex();
-
-	return createIndex(row, column, *node);
+	for (auto node : boost::make_iterator_range(m_database->getChildrenIterator(parent.internalPointer()))) {
+		if (counter == row) {
+			return createIndex(row, column, node);
+		}
+		counter++;
+	}
+	return QModelIndex();
 }
 
 QModelIndex DatabaseModel::parent(const QModelIndex &index) const
@@ -77,27 +82,27 @@ QModelIndex DatabaseModel::parent(const QModelIndex &index) const
 	if (!index.isValid())
 		return QModelIndex();
 
-	if (database.getRootNode() == index.internalPointer())
+	if (m_database->getRoot() == index.internalPointer())
 		return QModelIndex();
 
-	Database::tree_node_descriptor parent = database.getParentNode(index.internalPointer());
+	Database::TreeNodeDescriptor parent = m_database->getParent(index.internalPointer());
 
-	if (parent == database.getRootNode()) {
-		return createIndex(0, 0, database.getRootNode());
+	if (parent == m_database->getRoot()) {
+		return createIndex(0, 0, m_database->getRoot());
 	}
 
-	return createIndex(database.getNodeData(parent).row, 0, parent);
+	return createIndex(m_database->getData(parent).row, 0, parent);
 }
 
 int DatabaseModel::rowCount(const QModelIndex &parent) const
 {
-	Database::tree_node_descriptor node;
+	Database::TreeNodeDescriptor node;
 
 	if (parent.isValid()) {
 		node = parent.internalPointer();
-		return database.getNodeData(node).count;
+		return m_database->getData(node).count;
 	} else {
-		if (database.getRootNode() == nullptr)
+		if (m_database->getRoot() == nullptr)
 			return 0;
 		return 1;
 	}
@@ -109,44 +114,11 @@ int DatabaseModel::columnCount(const QModelIndex &parent) const
 	return 1;
 }
 
-Database::tree_node_descriptor DatabaseModel::createNode(Database::tree_node_descriptor parent,
-		const cache_node_data &cacheNodeData)
-{
-	database_node_data &parentNodeData = database.getNodeData(parent);
-
-	beginInsertRows(createIndex(parentNodeData.row, 0, parent), parentNodeData.count, parentNodeData.count);
-	Database::tree_node_descriptor newNode = database.createChildNode(parent);
-	database_node_data &newNodeData = database.getNodeData(newNode);
-	newNodeData.row = parentNodeData.count++;
-	newNodeData.name = cacheNodeData.name;
-	endInsertRows();
-
-	return newNode;
-}
-
-void DatabaseModel::deleteNode(Database::tree_node_descriptor node)
-{
-	database_node_data &data = database.getNodeData(node);
-
-	if (data.deleted)
-		return;
-
-	data.deleted = true;
-	QModelIndex index = createIndex(data.row, 0, node);
-	emit dataChanged(index, index, {Qt::DisplayRole});
-}
-
-void DatabaseModel::changeNodeData(const cache_node_data &cacheNodeData)
-{
-	database_node_data &data = database.getNodeData(cacheNodeData.database_node);
-	data.name = cacheNodeData.name;
-	QModelIndex index = createIndex(data.row, 0, cacheNodeData.database_node);
-	emit dataChanged(index, index, {Qt::DisplayRole});
-}
-
 void DatabaseModel::resetModel()
 {
 	beginResetModel();
-	database.reset();
+	m_database->reset();
 	endResetModel();
+}
+
 }

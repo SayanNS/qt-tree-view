@@ -8,82 +8,84 @@
 #include <boost/graph/adjacency_list.hpp>
 
 template<typename T>
-class TreeStructure : public boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, T>
+class TreeStructure
 {
 public:
-	typedef typename boost::graph_traits<TreeStructure<T>>::vertex_descriptor tree_node_descriptor;
+	using graph_type = boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, T>;
+	using TreeNodeDescriptor = typename boost::graph_traits<graph_type>::vertex_descriptor;
 
-	TreeStructure();
-
-	inline tree_node_descriptor getRootNode() const
+	TreeStructure() : m_graph(), m_root()
 	{
-		return root;
+	}
+
+	TreeNodeDescriptor getRoot() const
+	{
+		return m_root;
 	};
 
-	tree_node_descriptor getParentNode(tree_node_descriptor child);
-
-	tree_node_descriptor createChildNode(tree_node_descriptor parent);
-
-	inline std::pair<typename boost::graph_traits<TreeStructure<T>>::adjacency_iterator,
-					 typename boost::graph_traits<TreeStructure<T>>::adjacency_iterator> getNodeChildrenIterator(
-			tree_node_descriptor parent) const;
-
-	inline T & getNodeData(tree_node_descriptor node)
+	TreeNodeDescriptor getParent(TreeNodeDescriptor t_child)
 	{
-		return this->operator[](node);
+		return boost::source(*(boost::in_edges(t_child, m_graph).first), m_graph);
+	}
+
+	TreeNodeDescriptor createChild(TreeNodeDescriptor t_parent)
+	{
+		if (t_parent == nullptr) {
+			m_root = boost::add_vertex(m_graph);
+			return m_root;
+		} else {
+			TreeNodeDescriptor node = boost::add_vertex(m_graph);
+			boost::add_edge(t_parent, node, m_graph);
+			return node;
+		}
+	}
+
+	std::pair<typename boost::graph_traits<graph_type>::adjacency_iterator,
+					 typename boost::graph_traits<graph_type>::adjacency_iterator> getChildrenIterator(
+			TreeNodeDescriptor t_parent) const
+	{
+		if (t_parent == nullptr)
+			return boost::adjacent_vertices(m_root, m_graph);
+
+		return boost::adjacent_vertices(t_parent, m_graph);
+	}
+
+	T & getData(TreeNodeDescriptor t_node)
+	{
+		return m_graph[t_node];
 	};
 
-	void removeNode(tree_node_descriptor node);
+	void move(TreeNodeDescriptor parent, TreeNodeDescriptor child)
+	{
+		boost::remove_edge(boost::edge(m_root, child, m_graph).first, m_graph);
+		boost::add_edge(parent, child, m_graph);
+	}
+
+	void clear()
+	{
+		m_graph.clear();
+	}
+
+//	void removeNode(TreeNodeDescriptor node)
+//	{
+//		boost::clear_in_edges(node, m_graph);
+//		auto edges_it_pair = out_edges(node, m_graph);
+//		for (auto edges_it = edges_it_pair.first; edges_it != edges_it_pair.second;) {
+//			auto node_p = edges_it++;
+//			removeNode(boost::target(*node_p, m_graph));
+//		}
+//		boost::clear_out_edges(node, m_graph);
+//		boost::remove_vertex(node, m_graph);
+//
+//		if (node == m_root) m_root = nullptr;
+//	}
 
 protected:
-	tree_node_descriptor root;
+	TreeNodeDescriptor m_root;
+
+private:
+	graph_type m_graph;
 };
-
-template<typename T> TreeStructure<T>::TreeStructure()
-		: boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, T>(), root(nullptr)
-{
-}
-
-template<typename T> typename TreeStructure<T>::tree_node_descriptor TreeStructure<T>::getParentNode(tree_node_descriptor child)
-{
-	return boost::source(*(boost::in_edges(child, *this).first), *this);
-}
-
-template<typename T> typename TreeStructure<T>::tree_node_descriptor TreeStructure<T>::createChildNode(tree_node_descriptor parent)
-{
-	if (parent == nullptr) {
-		root = boost::add_vertex(*this);
-		return root;
-	} else {
-		tree_node_descriptor node = boost::add_vertex(*this);
-		boost::add_edge(parent, node, *this);
-		return node;
-	}
-}
-
-template<typename T> void TreeStructure<T>::removeNode(tree_node_descriptor node)
-{
-	boost::clear_in_edges(node, *this);
-	auto edges_it_pair = out_edges(node, *this);
-	for (auto edges_it = edges_it_pair.first; edges_it != edges_it_pair.second;) {
-		auto node_p = edges_it++;
-		removeNode(boost::target(*node_p, *this));
-	}
-	boost::clear_out_edges(node, *this);
-	boost::remove_vertex(node, *this);
-
-//	if (node == root) root = nullptr;
-}
-
-template<typename T> inline std::pair<typename boost::graph_traits<TreeStructure<T>>::adjacency_iterator,
-		  typename boost::graph_traits<TreeStructure<T>>::adjacency_iterator>
-TreeStructure<T>::getNodeChildrenIterator(tree_node_descriptor parent) const
-{
-	if (parent == nullptr)
-		return boost::adjacent_vertices(root, *this);
-
-	return boost::adjacent_vertices(parent, *this);
-}
 
 
 #endif //BOOSTGRAPHLIBRARY_TREESTRUCTURE_H

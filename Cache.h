@@ -8,34 +8,44 @@
 #include "TreeStructure.h"
 #include "Database.h"
 
-struct cache_node_data : public database_node_data
-{
-	cache_node_data();
+namespace Mikran {
 
-	Database::tree_node_descriptor database_node;
-	bool modified;
+enum class State
+{
+	NOT_CHANGED,
+	CREATED,
+	DELETED,
+	CHANGED
 };
 
-class Cache : public TreeStructure<cache_node_data>
+struct CacheNode : public DatabaseNode
+{
+	CacheNode();
+
+	Database::TreeNodeDescriptor db_node;
+	State state;
+};
+
+class Cache : public TreeStructure<CacheNode>
 {
 public:
-	Cache(Database &database);
+	Cache(Database *t_database);
 
-	Cache::tree_node_descriptor findParent(Database::tree_node_descriptor database_node);
+	Cache::TreeNodeDescriptor fetchFromDatabase(Cache::TreeNodeDescriptor t_parent,
+			Database::TreeNodeDescriptor t_db_node);
 
-	bool isParent(Cache::tree_node_descriptor parent, Cache::tree_node_descriptor child);
+	Cache::TreeNodeDescriptor findParent(Database::TreeNodeDescriptor t_database_node);
 
-	void moveNode(Cache::tree_node_descriptor parent, Cache::tree_node_descriptor child);
+	bool isParent(Cache::TreeNodeDescriptor t_parent, Cache::TreeNodeDescriptor t_child);
 
-	Cache::tree_node_descriptor fetchFromDatabase(Cache::tree_node_descriptor parent,
-			Database::tree_node_descriptor node);
+	void flush();
 
 	void reset();
 
 private:
-	Database &database;
+	Database *m_database;
 };
 
-
+}
 
 #endif //BOOSTGRAPHLIBRARY_CACHE_H

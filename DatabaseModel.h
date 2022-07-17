@@ -6,16 +6,17 @@
 #define BOOSTGRAPHLIBRARY_DATABASEMODEL_H
 
 #include <QAbstractItemModel>
-#include <QModelIndex>
-#include "Cache.h"
 
+namespace Mikran {
+
+class Database;
 
 class DatabaseModel : public QAbstractItemModel
 {
 Q_OBJECT
 
 public:
-	explicit DatabaseModel(Database &database, QObject *parent = nullptr);
+	explicit DatabaseModel(Database *database, QObject *parent = nullptr);
 
 	QVariant data(const QModelIndex &index, int role) const override;
 
@@ -31,18 +32,12 @@ public:
 
 	int columnCount(const QModelIndex &parent = QModelIndex()) const override;
 
-	Database::tree_node_descriptor createNode(Database::tree_node_descriptor parent,
-			const cache_node_data &cacheNodeData);
-
-	void deleteNode(Database::tree_node_descriptor node);
-
-	void changeNodeData(const cache_node_data &cacheNodeData);
-
 	void resetModel();
 
 private:
-	Database &database;
+	Database *m_database;
 };
 
+}
 
 #endif //BOOSTGRAPHLIBRARY_DATABASEMODEL_H

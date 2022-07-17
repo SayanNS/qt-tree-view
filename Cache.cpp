@@ -3,168 +3,116 @@
 //
 
 #include "Cache.h"
-#include "Database.h"
 #include <queue>
-//#include <boost/graph/breadth_first_search.hpp>
 
+namespace Mikran {
 
-//struct bfs_visitor_duplicate_exception
-//{
-//};
-//
-//struct bfs_visitor_parent_found_exception
-//{
-//	bfs_visitor_parent_found_exception(Cache::tree_node_descriptor node) : node(node) {}
-//
-//	Cache::tree_node_descriptor node;
-//};
-//
-//class bfs_visitor : public boost::default_bfs_visitor
-//{
-//public:
-//	bfs_visitor(Database &database, Database::tree_node_descriptor node)
-//		: database(database)
-//		, node(node)
-//	{
-//	}
-//
-//	template <typename Vertex, typename Graph>
-//	void discover_vertex(Vertex u, const Graph &g) const
-//	{
-//		const Cache &cache = reinterpret_cast<const Cache &>(g);
-//		Cache::tree_node_descriptor vertex = reinterpret_cast<Cache::tree_node_descriptor>(u);
-//		cache_node_data &data = cache.getNodeData(vertex);
-//
-//		if (data.database_node == node)
-//			throw bfs_visitor_duplicate_exception();
-//
-//		if (node != database.getRootNode()
-//			&& data.database_node == database.getParentNode(node))
-//			throw bfs_visitor_parent_found_exception(vertex);
-//	}
-//
-//private:
-//	Database &database;
-//	Database::tree_node_descriptor node;
-//};
-
-cache_node_data::cache_node_data() : database_node_data(), database_node(nullptr), modified(false)
+CacheNode::CacheNode()
+		: DatabaseNode()
+		, state(State::NOT_CHANGED)
 {
 }
 
-Cache::Cache(Database &database) : TreeStructure<cache_node_data>(), database(database)
+Cache::Cache(Database *t_database)
+	: TreeStructure<CacheNode>()
+	, m_database(t_database)
 {
-	createChildNode(nullptr);
+	createChild(nullptr);
 }
 
-Cache::tree_node_descriptor Cache::fetchFromDatabase(Cache::tree_node_descriptor parent, Database::tree_node_descriptor node)
+Cache::TreeNodeDescriptor
+Cache::fetchFromDatabase(Cache::TreeNodeDescriptor t_parent, Database::TreeNodeDescriptor t_db_node)
 {
-	Cache::tree_node_descriptor new_node = createChildNode(parent);
-	int row = getNodeData(parent).count++;
-	cache_node_data &node_data = getNodeData(new_node);
-	node_data.name = database.getNodeData(node).name;
-	node_data.database_node = node;
+	Cache::TreeNodeDescriptor new_node = createChild(t_parent);
+	int row = getData(t_parent).count++;
+	CacheNode &node_data = getData(new_node);
+	node_data.name = m_database->getData(t_db_node).name;
+	node_data.db_node = t_db_node;
 	node_data.row = row;
 
 	return new_node;
 }
 
-Cache::tree_node_descriptor Cache::findParent(Database::tree_node_descriptor database_node)
+Cache::TreeNodeDescriptor Cache::findParent(Database::TreeNodeDescriptor t_db_node)
 {
-//	std::map<Cache::tree_node_descriptor, size_t> i_map;
-//	for (auto v : boost::make_iterator_range(vertices(*this))) {
-//		i_map.emplace(v, i_map.size());
-//	}
-//
-//	auto ipmap = boost::make_assoc_property_map(i_map);
-//
-//	std::vector<boost::default_color_type> c_map(num_vertices(*this));
-//	auto cpmap = boost::make_iterator_property_map(c_map.begin(), ipmap);
-//
-//	bfs_visitor vis(database, database_node);
-//
-//	try {
-//		boost::breadth_first_search(*this, root, boost::visitor(vis).vertex_index_map(ipmap).color_map(cpmap));
-//	} catch(bfs_visitor_duplicate_exception &exc) {
-//		return true;
-//	} catch(bfs_visitor_parent_found_exception &exc) {
-//		cache_node = exc.node;
-//		return false;
-//	}
-
-	if (database_node == database.getRootNode()) {
-		for (auto child : boost::make_iterator_range(getNodeChildrenIterator(root))) {
-			if (getNodeData(child).database_node == database_node)
+	if (t_db_node == m_database->getRoot()) {
+		for (auto child : boost::make_iterator_range(getChildrenIterator(m_root))) {
+			if (getData(child).db_node == t_db_node)
 				return nullptr;
 		}
 	} else {
-		std::list<Cache::tree_node_descriptor> family_list;
+		std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
+		Database::TreeNodeDescriptor db_node_parent = m_database->getParent(t_db_node);
+		bfs_traversal.push(m_root);
 
-		for (Database::tree_node_descriptor current = database_node; current != database.getRootNode();) {
-			family_list.push_front(current);
-			current = database.getParentNode(current);
-		}
-		family_list.push_front(database.getRootNode());
+		while (!bfs_traversal.empty()) {
+			Cache::TreeNodeDescriptor current = bfs_traversal.front();
 
-		for (auto child : boost::make_iterator_range(getNodeChildrenIterator(root))) {
-			auto it = family_list.begin();
+			for (auto child : boost::make_iterator_range(getChildrenIterator(current))) {
+				if (getData(child).db_node == t_db_node)
+					return nullptr;
 
-			for (; it != family_list.end(); it++) {
-				cache_node_data &data = getNodeData(child);
-				if (data.database_node == nullptr)
-					break;
-				if (data.database_node == *it) {
-					Cache::tree_node_descriptor current = child;
-					for (it++; it != family_list.end(); it++) {
-						bool failed = true;
-						for (auto current_child : boost::make_iterator_range(getNodeChildrenIterator(current))) {
-							if (getNodeData(current_child).database_node == *it) {
-								current = current_child;
-								failed = false;
-								break;
-							}
-						}
-						if (failed) {
-							break;
+				if (getData(child).db_node == db_node_parent) {
+					for (auto child_child : boost::make_iterator_range(getChildrenIterator(child))) {
+						if (getData(child_child).db_node == t_db_node) {
+							return nullptr;
 						}
 					}
-					if (it == family_list.end()) {
-						return nullptr;
-					}
-					if (next(it) == family_list.end()) {
-						return current;
-					}
+					return child;
 				}
+				bfs_traversal.push(child);
 			}
+			bfs_traversal.pop();
 		}
 	}
-	return root;
+	return m_root;
 }
 
-bool Cache::isParent(Cache::tree_node_descriptor parent, Cache::tree_node_descriptor child)
+bool Cache::isParent(Cache::TreeNodeDescriptor t_parent, Cache::TreeNodeDescriptor t_child)
 {
-	cache_node_data child_data = getNodeData(child);
-	cache_node_data parent_data = getNodeData(parent);
+	CacheNode child_data = getData(t_child);
+	CacheNode parent_data = getData(t_parent);
 
-	if (child_data.database_node == database.getRootNode())
+	if (child_data.db_node == m_database->getRoot())
 		return false;
 
-	if (parent_data.database_node == database.getParentNode(child_data.database_node))
+	if (parent_data.db_node == m_database->getParent(child_data.db_node))
 		return true;
 
 	return false;
 }
 
-void Cache::moveNode(Cache::tree_node_descriptor parent, Cache::tree_node_descriptor child)
-{
-	boost::remove_edge(boost::edge(root, child, *this).first, *this);
-	getNodeData(root).count--;
-	boost::add_edge(parent, child, *this);
-	getNodeData(child).row = getNodeData(parent).count++;
-}
-
 void Cache::reset()
 {
-	this->clear();
-	createChildNode(nullptr);
+	clear();
+	createChild(nullptr);
+}
+
+void Cache::flush()
+{
+	std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
+	bfs_traversal.push(m_root);
+
+	while (!bfs_traversal.empty()) {
+		Cache::TreeNodeDescriptor current = bfs_traversal.front();
+
+		for (auto child : boost::make_iterator_range(getChildrenIterator(current))) {
+			CacheNode &data = getData(child);
+
+			if (data.state == State::CREATED) {
+				data.db_node = m_database->append(data, getData(getParent(child)).db_node);
+			} else if (data.state == State::CHANGED) {
+				m_database->update(data, data.db_node);
+			} else if (data.state == State::DELETED) {
+				m_database->remove(data.db_node);
+				data.state = State::NOT_CHANGED;
+				continue;
+			}
+			data.state = State::NOT_CHANGED;
+			bfs_traversal.push(child);
+		}
+		bfs_traversal.pop();
+	}
+}
+
 }

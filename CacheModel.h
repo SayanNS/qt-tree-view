@@ -6,16 +6,17 @@
 #define BOOSTGRAPHLIBRARY_CACHEMODEL_H
 
 #include <QAbstractItemModel>
-#include <QModelIndex>
-#include "Cache.h"
 
+namespace Mikran {
+
+class Cache;
 
 class CacheModel : public QAbstractItemModel
 {
 Q_OBJECT
 
 public:
-	explicit CacheModel(Cache &cache, QObject *parent = nullptr);
+	explicit CacheModel(Cache *t_cache, QObject *parent = nullptr);
 
 	QVariant data(const QModelIndex &index, int role) const override;
 
@@ -33,19 +34,20 @@ public:
 
 	int columnCount(const QModelIndex &parent = QModelIndex()) const override;
 
-	void loadNode(const QModelIndex &index);
+	void loadIndex(const QModelIndex &index);
 
-	void addNode(const QModelIndex &index, QString name);
+	void addIndex(const QModelIndex &index, QString name);
 
-	void deleteNode(const QModelIndex &index);
+	void deleteIndex(const QModelIndex &index);
 
-	void applyChanges(QAbstractItemModel *model);
+	void applyChanges();
 
 	void resetModel();
 
 private:
-	Cache &cache;
+	Cache *m_cache;
 };
 
+}
 
 #endif //BOOSTGRAPHLIBRARY_CACHEMODEL_H

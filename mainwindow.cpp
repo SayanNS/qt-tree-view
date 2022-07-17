@@ -28,8 +28,8 @@ void MainWindow::on_newButton_clicked()
 			QLineEdit::Normal, QString(), &ok);
 	if (!ok || name.isEmpty()) return;
 
-	CacheModel *treeModel = (CacheModel *)ui->cacheTreeView->model();
-	treeModel->addNode(index, name);
+	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
+	cacheModel->addIndex(index, name);
 }
 
 void MainWindow::on_deleteButton_clicked()
@@ -37,13 +37,10 @@ void MainWindow::on_deleteButton_clicked()
 	QModelIndex index = ui->cacheTreeView->currentIndex();
 	if (!index.isValid()) return;
 
-	CacheModel *cacheModel = reinterpret_cast<CacheModel *>(ui->cacheTreeView->model());
-	cacheModel->deleteNode(index);
+	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
+	cacheModel->deleteIndex(index);
 
-	while (index != QModelIndex() && !(index.flags() & Qt::ItemIsEnabled)) {
-		index = index.parent();
-	}
-	ui->cacheTreeView->setCurrentIndex(index);
+	ui->cacheTreeView->setCurrentIndex(QModelIndex());
 }
 
 void MainWindow::on_loadButton_clicked()
@@ -51,28 +48,30 @@ void MainWindow::on_loadButton_clicked()
 	QModelIndex index = ui->databaseTreeView->currentIndex();
 	if (!index.isValid()) return;
 
-	CacheModel *cacheModel = reinterpret_cast<CacheModel *>(ui->cacheTreeView->model());
-	cacheModel->loadNode(index);
+	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
+	cacheModel->loadIndex(index);
+
+	index = ui->cacheTreeView->currentIndex();
+	if (!(index.flags() & Qt::ItemIsEnabled)) {
+		ui->cacheTreeView->setCurrentIndex(QModelIndex());
+	}
 }
 
 void MainWindow::on_applyButton_clicked()
 {
-	CacheModel *cacheModel = reinterpret_cast<CacheModel *>(ui->cacheTreeView->model());
-	cacheModel->applyChanges(ui->databaseTreeView->model());
+	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
+	cacheModel->applyChanges();
 
 	QModelIndex index = ui->databaseTreeView->currentIndex();
-	if (!index.isValid()) return;
-
-	while (index != QModelIndex() && !(index.flags() & Qt::ItemIsEnabled)) {
-		index = index.parent();
+	if (index != QModelIndex() && !(index.flags() & Qt::ItemIsEnabled)) {
+		ui->databaseTreeView->setCurrentIndex(QModelIndex());
 	}
-	ui->databaseTreeView->setCurrentIndex(index);
 }
 
 void MainWindow::on_resetButton_clicked()
 {
-	DatabaseModel *databaseModel = reinterpret_cast<DatabaseModel *>(ui->databaseTreeView->model());
+	Mikran::DatabaseModel *databaseModel = static_cast<Mikran::DatabaseModel *>(ui->databaseTreeView->model());
 	databaseModel->resetModel();
-	CacheModel *cacheModel = reinterpret_cast<CacheModel *>(ui->cacheTreeView->model());
+	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
 	cacheModel->resetModel();
 }
