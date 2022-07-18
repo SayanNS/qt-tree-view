@@ -55,6 +55,9 @@ void Database::reset()
 
 void Database::update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_node)
 {
+	if (t_node == nullptr)
+		return;
+
 	DatabaseNode &data = getData(t_node);
 
 	if (data.deleted)
