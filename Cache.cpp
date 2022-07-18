@@ -101,14 +101,15 @@ void Cache::flush()
 
 			if (data.state == State::CREATED) {
 				data.db_node = m_database->append(data, getData(getParent(child)).db_node);
+				data.state = State::NOT_CHANGED;
 			} else if (data.state == State::CHANGED) {
 				m_database->update(data, data.db_node);
+				data.state = State::NOT_CHANGED;
 			} else if (data.state == State::DELETED) {
 				m_database->remove(data.db_node);
 				data.state = State::NOT_CHANGED;
 				continue;
 			}
-			data.state = State::NOT_CHANGED;
 			bfs_traversal.push(child);
 		}
 		bfs_traversal.pop();

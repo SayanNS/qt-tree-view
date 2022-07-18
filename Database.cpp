@@ -56,6 +56,10 @@ void Database::reset()
 void Database::update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_node)
 {
 	DatabaseNode &data = getData(t_node);
+
+	if (data.deleted)
+		return;
+
 	data.name = t_data.name;
 	data.deleted = t_data.deleted;
 
@@ -64,8 +68,12 @@ void Database::update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t
 
 Database::TreeNodeDescriptor Database::append(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_parent)
 {
-	Database::TreeNodeDescriptor node = createChild(t_parent);
 	DatabaseNode &parent_data = getData(t_parent);
+
+	if (parent_data.deleted)
+		return nullptr;
+
+	Database::TreeNodeDescriptor node = createChild(t_parent);
 	DatabaseNode &data = getData(node);
 	data.name = t_data.name;
 	data.deleted = t_data.deleted;

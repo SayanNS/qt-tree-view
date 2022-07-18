@@ -198,9 +198,11 @@ void CacheModel::deleteIndex(const QModelIndex &index)
 	CacheNode &node_data = m_cache->getData(node);
 
 	node_data.deleted = true;
-	if (node_data.state != State::CREATED)
+	if (node_data.state != State::CREATED) {
 		node_data.state = State::DELETED;
-
+	} else {
+		node_data.state = State::NOT_CHANGED;
+	}
 	emit dataChanged(index, index, {Qt::DisplayRole});
 
 	std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
