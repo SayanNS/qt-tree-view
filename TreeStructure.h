@@ -2,72 +2,83 @@
 // Created by sayan on 05.07.2022.
 //
 
-#ifndef BOOSTGRAPHLIBRARY_TREESTRUCTURE_H
-#define BOOSTGRAPHLIBRARY_TREESTRUCTURE_H
+#ifndef MIKRAN_TREESTRUCTURE_H
+#define MIKRAN_TREESTRUCTURE_H
 
-#include <boost/graph/adjacency_list.hpp>
 
-template<typename T>
+#include <QList>
+
+template <typename T>
 class TreeStructure
 {
 public:
-	using graph_type = boost::adjacency_list<boost::listS, boost::listS, boost::bidirectionalS, T>;
-	using TreeNodeDescriptor = typename boost::graph_traits<graph_type>::vertex_descriptor;
-
-	TreeNodeDescriptor getRoot() const
+	class TreeNode : public T
 	{
-		return m_root;
-	};
-
-	TreeNodeDescriptor getParent(TreeNodeDescriptor t_child)
-	{
-		return boost::source(*(boost::in_edges(t_child, m_graph).first), m_graph);
-	}
-
-	TreeNodeDescriptor createChild(TreeNodeDescriptor t_parent)
-	{
-		if (t_parent == nullptr) {
-			m_root = boost::add_vertex(m_graph);
-			return m_root;
-		} else {
-			TreeNodeDescriptor node = boost::add_vertex(m_graph);
-			boost::add_edge(t_parent, node, m_graph);
-			return node;
+	public:
+		TreeNode *getParent() const
+		{
+			return parent;
 		}
-	}
 
-	std::pair<typename boost::graph_traits<graph_type>::adjacency_iterator,
-					 typename boost::graph_traits<graph_type>::adjacency_iterator> getChildrenIterator(
-			TreeNodeDescriptor t_parent) const
-	{
-		if (t_parent == nullptr)
-			return boost::adjacent_vertices(m_root, m_graph);
+		TreeNode *getChildrenAtIndex(int index) const
+		{
+			return children.at(index);
+		}
 
-		return boost::adjacent_vertices(t_parent, m_graph);
-	}
+		int getIndex()
+		{
+			return parent->children.indexOf(this);
+		}
 
-	T & getData(TreeNodeDescriptor t_node)
-	{
-		return m_graph[t_node];
+		int getChildrenCount() const
+		{
+			return children.count();
+		}
+
+		QList<TreeNode *> const &getChildrenList() const
+		{
+			return children;
+		}
+
+		void append(TreeNode *node)
+		{
+			node->parent = this;
+			children.append(node);
+		}
+
+		void remove(TreeNode *node)
+		{
+			children.removeOne(node);
+		}
+
+		~TreeNode()
+		{
+			qDeleteAll(children);
+		}
+
+	private:
+		friend class TreeStructure<T>;
+
+		TreeNode() = default;
+
+
+		QList<TreeNode *> children;
+		TreeNode *parent;
 	};
 
-	void move(TreeNodeDescriptor parent, TreeNodeDescriptor child)
+	TreeNode *getRoot() const
 	{
-		boost::remove_edge(boost::edge(m_root, child, m_graph).first, m_graph);
-		boost::add_edge(parent, child, m_graph);
-	}
-
-	void clear()
-	{
-		m_graph.clear();
+		return root;
 	}
 
 protected:
-	TreeNodeDescriptor m_root;
+	TreeNode *createNewNode()
+	{
+		return new TreeNode();
+	}
 
-private:
-	graph_type m_graph;
+	TreeNode *root;
 };
 
 
-#endif //BOOSTGRAPHLIBRARY_TREESTRUCTURE_H
+#endif //MIKRAN_TREESTRUCTURE_H

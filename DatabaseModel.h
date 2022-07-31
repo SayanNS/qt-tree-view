@@ -2,8 +2,8 @@
 // Created by sayan on 05.07.2022.
 //
 
-#ifndef BOOSTGRAPHLIBRARY_DATABASEMODEL_H
-#define BOOSTGRAPHLIBRARY_DATABASEMODEL_H
+#ifndef MIKRAN_DATABASEMODEL_H
+#define MIKRAN_DATABASEMODEL_H
 
 #include <QAbstractItemModel>
 
@@ -35,9 +35,9 @@ public:
 	void resetModel();
 
 private:
-	Database *m_database;
+	Database *database;
 };
 
 }
 
-#endif //BOOSTGRAPHLIBRARY_DATABASEMODEL_H
+#endif //MIKRAN_DATABASEMODEL_H

@@ -2,8 +2,8 @@
 // Created by sayan on 05.07.2022.
 //
 
-#ifndef BOOSTGRAPHLIBRARY_DATABASE_H
-#define BOOSTGRAPHLIBRARY_DATABASE_H
+#ifndef MIKRAN_DATABASE_H
+#define MIKRAN_DATABASE_H
 
 #include "TreeStructure.h"
 
@@ -11,41 +11,49 @@ namespace Mikran {
 
 struct DatabaseNode
 {
-	DatabaseNode();
+	DatabaseNode() = default;
 
-	std::string name;
-	int row;
-	int count;
+	QString name;
 	bool deleted;
 };
 
 class Database : public TreeStructure<DatabaseNode>
 {
 public:
-	using appended_handler = std::function<void (int, int, Database::TreeNodeDescriptor)>;
-	using updated_handler = std::function<void (int, Database::TreeNodeDescriptor)>;
+	using onNewNodeAboutToBeInsertedHandler = std::function<void (TreeNode *, int)>;
+	using onNewNodeInsertedHandler = std::function<void ()>;
+
+	using onNodeDataChangedHandler = std::function<void (TreeNode *)>;
 
 	Database();
 
-	void init();
-
 	void reset();
 
-	void setCallbacks(appended_handler &&t_onAppended, updated_handler &&t_onUpdated);
+	void changeNodeNameAndDelete(TreeNode *node, QString &name);
+	void changeNodeName(TreeNode *node, QString &name);
+	void deleteNode(TreeNode *node);
 
-	void update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_node);
+	TreeNode *appendNewNode(TreeNode *parent, DatabaseNode *node);
 
-	void remove(Database::TreeNodeDescriptor t_node);
+	void setOnNewNodeAboutToBeInsertedHandler(onNewNodeAboutToBeInsertedHandler &&handler);
+	void setOnNewNodeInsertedHandler(onNewNodeInsertedHandler &&handler);
 
-	Database::TreeNodeDescriptor append(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_parent);
+	void setOnNodeDataChangedHandler(onNodeDataChangedHandler &&handler);
 
 private:
-	void populate(typename Database::TreeNodeDescriptor t_parent, std::string &t_str, int t_current);
+	void markNodeAndDescendantsAsDeleted(TreeNode *node);
 
-	appended_handler m_onAppended;
-	updated_handler m_onUpdated;
+	void init();
+
+	void populate(TreeNode *parent, QString &str, int current);
+
+	onNewNodeAboutToBeInsertedHandler onNewNodeAboutToBeInserted;
+	onNewNodeInsertedHandler onNewNodeInserted;
+
+	onNodeDataChangedHandler onNodeDataChanged;
+
 };
 
 }
 
-#endif //BOOSTGRAPHLIBRARY_DATABASE_H
+#endif //MIKRAN_DATABASE_H

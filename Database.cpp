@@ -5,122 +5,116 @@
 #include "Database.h"
 #include <queue>
 
+
 #define DEPTH 4
 #define WIDTH 5
 
 namespace Mikran {
-
-DatabaseNode::DatabaseNode()
-		: count(0)
-		, deleted(false)
-{
-}
 
 Database::Database() : TreeStructure<DatabaseNode>()
 {
 	init();
 }
 
-void Database::populate(Database::TreeNodeDescriptor t_parent, std::string &t_str, int t_current)
-{
-	if (t_current <= DEPTH) {
-		for (int i = 0; i < WIDTH; i++) {
-			t_str.resize(t_current + 1);
-			t_str[t_current] = 'A' + i;
-			Database::TreeNodeDescriptor node = createChild(t_parent);
-			getData(t_parent).count++;
-			DatabaseNode &node_data = getData(node);
-			node_data.name = t_str;
-			node_data.row = i;
-			populate(node, t_str, t_current + 1);
-		}
-	}
-}
-
 void Database::init()
 {
-	std::string str = "A";
-	Database::TreeNodeDescriptor node = createChild(nullptr);
-	DatabaseNode &node_data = getData(node);
-	node_data.name = str;
-	node_data.row = 0;
-	populate(node, str, 1);
+	QString string = "A";
+	root = createNewNode();
+	root->name = string;
+	populate(root, string, 1);
 }
 
 void Database::reset()
 {
-	clear();
+	delete root;
 	init();
 }
 
-void Database::update(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_node)
+void Database::populate(TreeNode *parent, QString &string, int current)
 {
-	if (t_node == nullptr)
+	if (current > DEPTH)
 		return;
 
-	DatabaseNode &data = getData(t_node);
+	for (int i = 0; i < WIDTH; i++) {
+		string.resize(current + 1);
+		string[current] = 'A' + i;
+		Database::TreeNode *node = createNewNode();
+		node->name = string;
+		parent->append(node);
+		populate(node, string, current + 1);
+	}
+}
 
-	if (data.deleted)
+Database::TreeNode *Database::appendNewNode(TreeNode *parent, DatabaseNode *node)
+{
+	onNewNodeAboutToBeInserted(parent, parent->getChildrenCount());
+	TreeNode *newNode = createNewNode();
+	newNode->name = node->name;
+	newNode->deleted = node->deleted;
+	parent->append(newNode);
+	onNewNodeInserted();
+
+	return newNode;
+}
+
+void Database::deleteNode(TreeNode *node)
+{
+	markNodeAndDescendantsAsDeleted(node);
+}
+
+void Database::changeNodeName(TreeNode *node, QString &name)
+{
+	node->name = name;
+	onNodeDataChanged(node);
+}
+
+void Database::changeNodeNameAndDelete(TreeNode *node, QString &name)
+{
+	node->name = name;
+	markNodeAndDescendantsAsDeleted(node);
+}
+
+void Database::markNodeAndDescendantsAsDeleted(TreeNode *node)
+{
+	if (node->deleted)
 		return;
 
-	data.name = t_data.name;
-	data.deleted = t_data.deleted;
+	node->deleted = true;
+	onNodeDataChanged(node);
 
-	m_onUpdated(data.row, t_node);
-}
-
-Database::TreeNodeDescriptor Database::append(const DatabaseNode &t_data, Database::TreeNodeDescriptor t_parent)
-{
-	DatabaseNode &parent_data = getData(t_parent);
-
-	if (parent_data.deleted)
-		return nullptr;
-
-	Database::TreeNodeDescriptor node = createChild(t_parent);
-	DatabaseNode &data = getData(node);
-	data.name = t_data.name;
-	data.deleted = t_data.deleted;
-	data.row = parent_data.count;
-	parent_data.count++;
-
-	m_onAppended(parent_data.row, data.row, t_parent);
-
-	return node;
-}
-
-void Database::setCallbacks(Database::appended_handler &&t_onAppended, Database::updated_handler &&t_onUpdated)
-{
-	m_onAppended = std::move(t_onAppended);
-	m_onUpdated = std::move(t_onUpdated);
-}
-
-void Database::remove(Database::TreeNodeDescriptor t_node)
-{
-	DatabaseNode &data = getData(t_node);
-
-	if (data.deleted)
-		return;
-
-	data.deleted = true;
-	m_onUpdated(data.row, t_node);
-
-	std::queue<Database::TreeNodeDescriptor> bfs_traversal;
-	bfs_traversal.push(t_node);
+	std::queue<TreeNode *> bfs_traversal;
+	bfs_traversal.push(node);
 
 	while (!bfs_traversal.empty()) {
-		for (auto child : boost::make_iterator_range(getChildrenIterator(bfs_traversal.front()))) {
-			DatabaseNode &child_data = getData(child);
+		for (TreeNode *child : bfs_traversal.front()->getChildrenList()) {
 
-			if (child_data.deleted)
+			if (child->deleted)
 				continue;
 
-			child_data.deleted = true;
-			m_onUpdated(child_data.row, child);
+			child->deleted = true;
+			onNodeDataChanged(child);
 
 			bfs_traversal.push(child);
 		}
 		bfs_traversal.pop();
 	}
 }
+
+void Database::setOnNodeDataChangedHandler(onNodeDataChangedHandler &&handler)
+{
+	this->onNodeDataChanged = handler;
+}
+
+void Database::setOnNewNodeAboutToBeInsertedHandler(onNewNodeAboutToBeInsertedHandler &&handler)
+{
+	this->onNewNodeAboutToBeInserted = handler;
+}
+
+void Database::setOnNewNodeInsertedHandler(onNewNodeInsertedHandler &&handler)
+{
+	this->onNewNodeInserted = handler;
+}
+
+
 
 }

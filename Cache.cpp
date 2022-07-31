@@ -4,116 +4,241 @@
 
 #include "Cache.h"
 #include <queue>
+#include <stack>
+
 
 namespace Mikran {
 
-CacheNode::CacheNode()
-		: DatabaseNode()
-		, state(State::NOT_CHANGED)
-{
-}
-
-Cache::Cache(Database *t_database)
+Cache::Cache(Database *database)
 	: TreeStructure<CacheNode>()
-	, m_database(t_database)
+	, database(database)
 {
-	createChild(nullptr);
+	root = createNewNode();
 }
 
-Cache::TreeNodeDescriptor
-Cache::fetchFromDatabase(Cache::TreeNodeDescriptor t_parent, Database::TreeNodeDescriptor t_db_node)
+void Cache::loadFromDatabase(Database::TreeNode *databaseNode)
 {
-	Cache::TreeNodeDescriptor new_node = createChild(t_parent);
-	int row = getData(t_parent).count++;
-	CacheNode &node_data = getData(new_node);
-	node_data.name = m_database->getData(t_db_node).name;
-	node_data.db_node = t_db_node;
-	node_data.row = row;
+	TreeNode *closestLinkNode = findClosestDatabaseLinkNode(databaseNode);
 
-	return new_node;
-}
+	if (closestLinkNode->databaseLinkNode == databaseNode)
+		return;
 
-Cache::TreeNodeDescriptor Cache::findParent(Database::TreeNodeDescriptor t_db_node)
-{
-	if (t_db_node == m_database->getRoot()) {
-		for (auto child : boost::make_iterator_range(getChildrenIterator(m_root))) {
-			if (getData(child).db_node == t_db_node)
-				return nullptr;
-		}
-	} else {
-		std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
-		Database::TreeNodeDescriptor db_node_parent = m_database->getParent(t_db_node);
-		bfs_traversal.push(m_root);
+	TreeNode *newNode = createNewNode();
+	newNode->databaseLinkNode = databaseNode;
+	newNode->name = databaseNode->name;
+	newNode->deleted = closestLinkNode->deleted;
 
-		while (!bfs_traversal.empty()) {
-			Cache::TreeNodeDescriptor current = bfs_traversal.front();
+	QList<TreeNode *> const &childrenList = closestLinkNode->getChildrenList();
+	int removeChildrenIndex = 0;
 
-			for (auto child : boost::make_iterator_range(getChildrenIterator(current))) {
-				if (getData(child).db_node == t_db_node)
-					return nullptr;
-
-				if (getData(child).db_node == db_node_parent) {
-					for (auto child_child : boost::make_iterator_range(getChildrenIterator(child))) {
-						if (getData(child_child).db_node == t_db_node) {
-							return nullptr;
-						}
-					}
-					return child;
-				}
-				bfs_traversal.push(child);
-			}
-			bfs_traversal.pop();
+	for (auto childrenIterator = childrenList.begin(); childrenIterator != childrenList.end();) {
+		TreeNode *child = childrenIterator.operator*();
+		if (isAncestor(child, newNode)) {
+			childrenIterator++;
+			onNodeAboutToBeRemoved(closestLinkNode, removeChildrenIndex);
+			closestLinkNode->remove(child);
+			onNodeRemoved();
+			newNode->append(child);
+		} else {
+			removeChildrenIndex++;
+			childrenIterator++;
 		}
 	}
-	return m_root;
+
+	onNewNodeAboutToBeInserted(closestLinkNode, closestLinkNode->getChildrenCount());
+	closestLinkNode->append(newNode);
+	onNewNodeInserted();
 }
 
-bool Cache::isParent(Cache::TreeNodeDescriptor t_parent, Cache::TreeNodeDescriptor t_child)
+Cache::TreeNode *Cache::findClosestDatabaseLinkNode(Database::TreeNode *databaseNode)
 {
-	CacheNode child_data = getData(t_child);
-	CacheNode parent_data = getData(t_parent);
+	Cache::TreeNode *closestLinkNode = root;
+	Database::TreeNode *databaseRoot = database->getRoot();
+	std::list<Database::TreeNode *> databaseNodeFamily;
 
-	if (child_data.db_node == m_database->getRoot())
+	for (Database::TreeNode *current = databaseNode; current != databaseRoot;) {
+		databaseNodeFamily.push_front(current);
+		current = current->getParent();
+	}
+	databaseNodeFamily.push_front(databaseRoot);
+
+	auto databaseNodeFamilyIteratorOffset = databaseNodeFamily.begin();
+loop:
+	for (TreeNode *child : closestLinkNode->getChildrenList()) {
+		for (auto databaseNodeFamilyIterator = databaseNodeFamilyIteratorOffset;
+			 databaseNodeFamilyIterator != databaseNodeFamily.end(); databaseNodeFamilyIterator++) {
+			if (child->databaseLinkNode == databaseNodeFamilyIterator.operator*()) {
+				closestLinkNode = child;
+				databaseNodeFamilyIteratorOffset = databaseNodeFamilyIterator;
+				goto loop;
+			}
+		}
+	}
+
+	return closestLinkNode;
+}
+
+bool Cache::isAncestor(TreeNode *node, TreeNode *ancestor)
+{
+	Database::TreeNode *currentDatabaseLinkNode = node->databaseLinkNode;
+	Database::TreeNode *ancestorDatabaseLinkNode = ancestor->databaseLinkNode;
+
+	if (node->getParent() == root) {
+		for (Database::TreeNode *current = currentDatabaseLinkNode; current != database->getRoot();) {
+			if (current == ancestorDatabaseLinkNode)
+				return true;
+			current = current->getParent();
+		}
+
+		if (ancestorDatabaseLinkNode == database->getRoot())
+			return true;
+
 		return false;
+	}
 
-	if (parent_data.db_node == m_database->getParent(child_data.db_node))
-		return true;
+	Database::TreeNode *currentParentDatabaseLinkNode = node->getParent()->databaseLinkNode;
+
+	for (Database::TreeNode *current = currentDatabaseLinkNode; current != currentParentDatabaseLinkNode;) {
+		if (current == ancestorDatabaseLinkNode)
+			return true;
+		current = current->getParent();
+	}
 
 	return false;
 }
 
-void Cache::reset()
+void Cache::markNodeAndDescendantsAsDeleted(TreeNode *node)
 {
-	clear();
-	createChild(nullptr);
-}
+	if (node->deleted)
+		return;
 
-void Cache::flush()
-{
-	std::queue<Cache::TreeNodeDescriptor> bfs_traversal;
-	bfs_traversal.push(m_root);
+	node->deleted = true;
+	node->state = static_cast<NodeState>(node->state | DELETED);
+	onNodeDataChanged(node);
+
+	std::queue<Cache::TreeNode *> bfs_traversal;
+	bfs_traversal.push(node);
 
 	while (!bfs_traversal.empty()) {
-		Cache::TreeNodeDescriptor current = bfs_traversal.front();
+		for (Cache::TreeNode *child : bfs_traversal.front()->getChildrenList()) {
 
-		for (auto child : boost::make_iterator_range(getChildrenIterator(current))) {
-			CacheNode &data = getData(child);
-
-			if (data.state == State::CREATED) {
-				data.db_node = m_database->append(data, getData(getParent(child)).db_node);
-				data.state = State::NOT_CHANGED;
-			} else if (data.state == State::CHANGED) {
-				m_database->update(data, data.db_node);
-				data.state = State::NOT_CHANGED;
-			} else if (data.state == State::DELETED) {
-				m_database->remove(data.db_node);
-				data.state = State::NOT_CHANGED;
+			if (child->deleted)
 				continue;
-			}
+
+			child->deleted = true;
+			onNodeDataChanged(child);
+
 			bfs_traversal.push(child);
 		}
 		bfs_traversal.pop();
 	}
+}
+
+void Cache::createAndAppendNewNode(TreeNode *parent, QString &name)
+{
+	onNewNodeAboutToBeInserted(parent, parent->getChildrenCount());
+	TreeNode *newNode = createNewNode();
+	newNode->name = std::move(name);
+	parent->append(newNode);
+	onNewNodeInserted();
+}
+
+void Cache::flush()
+{
+	struct depth_first_traversal_state
+	{
+		depth_first_traversal_state(Cache::TreeNode *node)
+			: node(node)
+			, iterator(node->getChildrenList().begin())
+		{
+		}
+
+		Cache::TreeNode *node;
+		QList<TreeNode *>::const_iterator iterator;
+	};
+
+	std::stack<depth_first_traversal_state> dfs_traversal;
+	for (TreeNode *child : root->getChildrenList()) {
+		dfs_traversal.push(child);
+	}
+
+	while (!dfs_traversal.empty()) {
+		depth_first_traversal_state &current_state = dfs_traversal.top();
+
+		if (current_state.node->databaseLinkNode == nullptr) {
+			std::queue<TreeNode *> bfs_traversal;
+			bfs_traversal.push(current_state.node);
+
+			current_state.node->databaseLinkNode = database->appendNewNode(
+					current_state.node->getParent()->databaseLinkNode, current_state.node);
+			current_state.node->state = NodeState::NOT_CHANGED;
+
+			while (!bfs_traversal.empty()) {
+				for (TreeNode *child : bfs_traversal.front()->getChildrenList()) {
+					child->databaseLinkNode = database->appendNewNode( child->getParent()->databaseLinkNode, child);
+					child->state = NodeState::NOT_CHANGED;
+					bfs_traversal.push(child);
+				}
+				bfs_traversal.pop();
+			}
+
+			dfs_traversal.pop();
+			continue;
+		}
+
+		if (current_state.iterator != current_state.node->getChildrenList().end()) {
+			dfs_traversal.push(current_state.iterator.operator*());
+			current_state.iterator++;
+			continue;
+		}
+
+		switch (current_state.node->state) {
+		case NodeState::DELETED:
+			database->deleteNode(current_state.node->databaseLinkNode);
+			break;
+		case NodeState::MODIFIED:
+			database->changeNodeName(current_state.node->databaseLinkNode, current_state.node->name);
+			break;
+		case NodeState::MODIFIED_AND_DELETED:
+			database->changeNodeNameAndDelete(current_state.node->databaseLinkNode, current_state.node->name);
+			break;
+		case NodeState::NOT_CHANGED:
+			break;
+		}
+		current_state.node->state = NodeState::NOT_CHANGED;
+		dfs_traversal.pop();
+	}
+}
+
+void Cache::reset()
+{
+	delete root;
+	root = createNewNode();
+}
+
+void Cache::setOnNewNodeAboutToBeInsertedHandler(onNewNodeAboutToBeInsertedHandler &&handler)
+{
+	this->onNewNodeAboutToBeInserted = handler;
+}
+
+void Cache::setOnNewNodeInsertedHandler(onNewNodeInsertedHandler &&handler)
+{
+	this->onNewNodeInserted = handler;
+}
+
+void Cache::setOnNodeAboutToBeRemovedHandler(onNodeAboutToBeRemovedHandler &&handler)
+{
+	this->onNodeAboutToBeRemoved = handler;
+}
+
+void Cache::setOnNodeRemovedHandler(onNodeRemovedHandler &&handler)
+{
+	this->onNodeRemoved = handler;
+}
+
+void Cache::setOnNodeDataChangedHandler(Cache::onNodeDataChangedHandler &&handler)
+{
+	this->onNodeDataChanged = handler;
 }
 
 }

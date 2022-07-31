@@ -2,10 +2,11 @@
 // Created by sayan on 07.07.2022.
 //
 
-#ifndef BOOSTGRAPHLIBRARY_CACHEMODEL_H
-#define BOOSTGRAPHLIBRARY_CACHEMODEL_H
+#ifndef MIKRAN_CACHEMODEL_H
+#define MIKRAN_CACHEMODEL_H
 
 #include <QAbstractItemModel>
+
 
 namespace Mikran {
 
@@ -16,7 +17,7 @@ class CacheModel : public QAbstractItemModel
 Q_OBJECT
 
 public:
-	explicit CacheModel(Cache *t_cache, QObject *parent = nullptr);
+	explicit CacheModel(Cache *cache, QObject *parent = nullptr);
 
 	QVariant data(const QModelIndex &index, int role) const override;
 
@@ -36,7 +37,7 @@ public:
 
 	void loadIndex(const QModelIndex &index);
 
-	void addIndex(const QModelIndex &index, QString name);
+	void addIndex(const QModelIndex &index, QString &name);
 
 	void deleteIndex(const QModelIndex &index);
 
@@ -45,9 +46,9 @@ public:
 	void resetModel();
 
 private:
-	Cache *m_cache;
+	Cache *cache;
 };
 
 }
 
-#endif //BOOSTGRAPHLIBRARY_CACHEMODEL_H
+#endif //MIKRAN_CACHEMODEL_H

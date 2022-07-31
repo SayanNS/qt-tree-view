@@ -26,7 +26,9 @@ void MainWindow::on_newButton_clicked()
 	bool ok;
 	QString name = QInputDialog::getText(this, "Name", "Enter a name",
 			QLineEdit::Normal, QString(), &ok);
-	if (!ok || name.isEmpty()) return;
+
+	if (!ok || name.isEmpty())
+		return;
 
 	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
 	cacheModel->addIndex(index, name);
@@ -46,15 +48,12 @@ void MainWindow::on_deleteButton_clicked()
 void MainWindow::on_loadButton_clicked()
 {
 	QModelIndex index = ui->databaseTreeView->currentIndex();
-	if (!index.isValid()) return;
+
+	if (!index.isValid())
+		return;
 
 	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
 	cacheModel->loadIndex(index);
-
-	index = ui->cacheTreeView->currentIndex();
-	if (!(index.flags() & Qt::ItemIsEnabled)) {
-		ui->cacheTreeView->setCurrentIndex(QModelIndex());
-	}
 }
 
 void MainWindow::on_applyButton_clicked()
@@ -71,7 +70,8 @@ void MainWindow::on_applyButton_clicked()
 void MainWindow::on_resetButton_clicked()
 {
 	Mikran::DatabaseModel *databaseModel = static_cast<Mikran::DatabaseModel *>(ui->databaseTreeView->model());
-	databaseModel->resetModel();
 	Mikran::CacheModel *cacheModel = static_cast<Mikran::CacheModel *>(ui->cacheTreeView->model());
+
+	databaseModel->resetModel();
 	cacheModel->resetModel();
 }

@@ -7,21 +7,23 @@ set(CMAKE_AUTOUIC ON)
 set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 
-set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD 14)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 find_package(Qt5 COMPONENTS Widgets REQUIRED)
-find_package(Boost REQUIRED)
 
-include_directories(${Boost_INCLUDE_DIR})
-
-add_executable(${PROJECT_NAME} main.cpp
+add_executable(${PROJECT_NAME}
+        main.cpp
         mainwindow.cpp
         mainwindow.h
         mainwindow.ui
         DatabaseModel.cpp
+        DatabaseModel.h
         Database.cpp
+        Database.h
         CacheModel.cpp
-        Cache.cpp)
+        CacheModel.h
+        Cache.cpp
+        Cache.h)
 
-target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets ${Boost_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PRIVATE Qt5::Widgets)

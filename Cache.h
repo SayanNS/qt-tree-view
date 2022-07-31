@@ -2,28 +2,29 @@
 // Created by sayan on 07.07.2022.
 //
 
-#ifndef BOOSTGRAPHLIBRARY_CACHE_H
-#define BOOSTGRAPHLIBRARY_CACHE_H
+#ifndef MIKRAN_CACHE_H
+#define MIKRAN_CACHE_H
+
 
 #include "TreeStructure.h"
 #include "Database.h"
 
 namespace Mikran {
 
-enum class State
+enum NodeState
 {
-	NOT_CHANGED,
-	CREATED,
-	DELETED,
-	CHANGED
+	NOT_CHANGED = 0,
+	DELETED = 1,
+	MODIFIED = 2,
+	MODIFIED_AND_DELETED = DELETED | MODIFIED
 };
 
-struct CacheNode : public DatabaseNode
+struct CacheNode : DatabaseNode
 {
-	CacheNode();
+	CacheNode() = default;
 
-	Database::TreeNodeDescriptor db_node;
-	State state;
+	Database::TreeNode *databaseLinkNode;
+	NodeState state;
 };
 
 class Cache : public TreeStructure<CacheNode>
@@ -31,21 +32,47 @@ class Cache : public TreeStructure<CacheNode>
 public:
 	Cache(Database *t_database);
 
-	Cache::TreeNodeDescriptor fetchFromDatabase(Cache::TreeNodeDescriptor t_parent,
-			Database::TreeNodeDescriptor t_db_node);
+	using onNewNodeAboutToBeInsertedHandler = std::function<void (TreeNode *, int)>;
+	using onNewNodeInsertedHandler = std::function<void ()>;
 
-	Cache::TreeNodeDescriptor findParent(Database::TreeNodeDescriptor t_database_node);
+	using onNodeAboutToBeRemovedHandler = std::function<void (TreeNode *, int)>;
+	using onNodeRemovedHandler = std::function<void ()>;
 
-	bool isParent(Cache::TreeNodeDescriptor t_parent, Cache::TreeNodeDescriptor t_child);
+	using onNodeDataChangedHandler = std::function<void (TreeNode *)>;
+
+	void loadFromDatabase(Database::TreeNode *databaseNode);
+
+	bool isAncestor(TreeNode *node, TreeNode *ancestor);
+
+	void createAndAppendNewNode(TreeNode *parent, QString &name);
 
 	void flush();
-
 	void reset();
 
+	void markNodeAndDescendantsAsDeleted(TreeNode *node);
+
+	void setOnNewNodeAboutToBeInsertedHandler(onNewNodeAboutToBeInsertedHandler &&handler);
+	void setOnNewNodeInsertedHandler(onNewNodeInsertedHandler &&handler);
+
+	void setOnNodeAboutToBeRemovedHandler(onNodeAboutToBeRemovedHandler &&handler);
+	void setOnNodeRemovedHandler(onNodeRemovedHandler &&handler);
+
+	void setOnNodeDataChangedHandler(onNodeDataChangedHandler &&handler);
+
 private:
-	Database *m_database;
+	TreeNode *findClosestDatabaseLinkNode(Database::TreeNode *databaseNode);
+
+	Database *database;
+
+	onNewNodeAboutToBeInsertedHandler onNewNodeAboutToBeInserted;
+	onNewNodeInsertedHandler onNewNodeInserted;
+
+	onNodeAboutToBeRemovedHandler onNodeAboutToBeRemoved;
+	onNodeRemovedHandler onNodeRemoved;
+
+	onNodeDataChangedHandler onNodeDataChanged;
 };
 
 }
 
-#endif //BOOSTGRAPHLIBRARY_CACHE_H
+#endif //MIKRAN_CACHE_H
